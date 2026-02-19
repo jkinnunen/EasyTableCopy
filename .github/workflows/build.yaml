@@ -35,13 +35,15 @@ jobs:
       - name: Install Gettext tools
         run: choco install gettext -y
 
-      - name: Force Markdown Tables
+      - name: Patch Markdown Library for Tables
         run: |
-          # SCons'un dökümanları derlerken tabloları görmesi için 
-          # markdown komutunu sistem seviyesinde alias olarak güncelliyoruz.
-          python -m markdown -x tables -x fenced_code README.md > readme.html
-          # Bazı şablonlar bu ismi bekler
-          if (Test-Path "addon/doc/en/readme.md") { python -m markdown -x tables addon/doc/en/readme.md > addon/doc/en/readme.html }
+          # Bu komut, Python'ın markdown kütüphanesindeki varsayılan ayarları 
+          # tablo desteği (extra) her zaman açık olacak şekilde yamalar.
+          $markdownPath = python -c "import markdown, os; print(os.path.dirname(markdown.__file__))"
+          $initFile = join-path $markdownPath "__main__.py"
+          # SCons markdown'ı kütüphane olarak çağırdığı için temel init dosyasını da etkileyelim
+          $coreFile = join-path $markdownPath "core.py"
+          (Get-Content $coreFile) -replace "extensions=None", "extensions=['extra', 'tables', 'fenced_code']" | Set-Content $coreFile
         shell: pwsh
 
       - name: Build add-on
