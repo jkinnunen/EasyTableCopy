@@ -133,7 +133,7 @@ Bu komutların varsayılan tuş atamaları yoktur. Kullanmak için NVDA'nın Gir
 | 1-2. Sütunları Kopyala | Birinci ve ikinci sütunları kopyalar | Sadece Masaüstü/Gezgin |
 | 1-3. Sütunları Kopyala | İlk üç sütunu kopyalar | Sadece Masaüstü/Gezgin |
 | 1 ve 3. Sütunları Kopyala | Birinci ve üçüncü sütunları kopyalar | Sadece Masaüstü/Gezgin |
-| Tablo bilgileri | satır ve sütun sayısı gibi Tablo bilgilerini verir | Her Yerde |
+| Tablo İstatistikleri | Tablo boyutlarını söyler | Her Yerde |
 | Geçerli Hücreyi Kopyala | Bulunulan hücrenin içeriğini kopyalar | Her Yerde |
 | İşaretli Satırları Metin Olarak Kopyala | İşaretli satırları düz metin olarak kopyalar | Sadece Web |
 
