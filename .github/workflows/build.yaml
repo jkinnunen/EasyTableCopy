@@ -30,7 +30,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install scons markdown
+          pip install scons "markdown[extra]" pymdown-extensions
 
       - name: Install Gettext tools
         run: choco install gettext -y
