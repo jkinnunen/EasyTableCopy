@@ -23,12 +23,10 @@ Navigate inside any table on a website and press `NVDA + Alt + T` to open the ac
 Uses the browser's native copy function.
 *Pros:* Preserves exact fonts, background colors, and links.
 *Cons:* Relies on the browser; empty cells might collapse in some target applications.
-
 * **Copy Table (Reconstructed):**
 The "Safe Mode." The add-on ignores the browser and manually rebuilds the table from scratch.
 *Pros:* **Guarantees** that empty cells are filled (preserving borders) and enforces grid lines.
 *Cons:* May lose complex CSS styling (like rounded corners).
-
 * **Copy Current Row:** Copies only the row where your cursor is located (Standard mode).
 * **Copy Current Column:** Manually extracts and copies the vertical column where your cursor is located.
 
@@ -81,6 +79,7 @@ You can copy individual columns or combinations of columns from any desktop list
 | Copy Columns 1 and 3 | Copies the first and third columns (skipping the second) |
 
 **How to use:**
+
 1. Focus on any list or Explorer window.
 2. Press the key you've assigned to the desired column command (no default keys - assign in Input Gestures).
 3. The selected columns will be copied as a table with headers.
@@ -88,25 +87,28 @@ You can copy individual columns or combinations of columns from any desktop list
 ### C. Table Statistics in Desktop Mode
 
 Press the `Table Statistics` command (no default key) to hear:
-- Number of items in the folder/list
-- Number of columns displayed
+
+* Number of items in the folder/list
+* Number of columns displayed
 
 ## 4. Universal Features (Work Everywhere)
 
 ### A. Table Statistics
 
 Use the `Table Statistics` command anywhere (web, desktop, Explorer) to get instant information about the current table or list:
-- Number of rows/items
-- Number of columns
+
+* Number of rows/items
+* Number of columns
 
 The add-on intelligently samples large tables to provide quick and accurate information without performance lag.
 
 ### B. Copy Current Cell
 
 Use the `Copy Current Cell` command anywhere to quickly copy just the content of the current cell without the surrounding table structure. Perfect for:
-- Copying specific values from web tables
-- Extracting single items from lists
-- Quick data entry tasks
+
+* Copying specific values from web tables
+* Extracting single items from lists
+* Quick data entry tasks
 
 ## 5. Shortcuts Cheat Sheet
 
