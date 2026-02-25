@@ -360,19 +360,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                         
                         if row_match:
                             tr_start, row_content, tr_end = row_match.groups()
-                            cell_pattern = re.compile(r'(<(td|th)\b[^>]*>)(.*?)(</\2>)', re.IGNORECASE | re.DOTALL)
-                            cell_match = cell_pattern.search(row_content)
-                            
-                            if cell_match:
-                                c_start, tag, c_content, c_end = cell_match.groups()
-                                repaired_cell = f"{c_start}&nbsp;<p></p>{c_end}"
-                                new_row_content = row_content.replace(cell_match.group(0), repaired_cell, 1)
-                                raw_html = raw_html.replace(row_match.group(0), tr_start + new_row_content + tr_end, 1)
-                                modified = True
-                            else:
-                                repaired_row = f"{tr_start}<td>&nbsp;<p></p></td>{row_content}{tr_end}"
-                                raw_html = raw_html.replace(row_match.group(0), repaired_row, 1)
-                                modified = True
+                            insertion = "<td>&nbsp;<p></p></td>"
+                            repaired_row = f"{tr_start}{insertion}{row_content}{tr_end}"
+                            raw_html = raw_html.replace(row_match.group(0), repaired_row, 1)
+                            modified = True
 
                     if "border=" not in raw_html.lower() and "border:" not in raw_html.lower():
                         raw_html = re.sub(r'(<table\b[^>]*)(>)', r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html, count=1, flags=re.IGNORECASE)
