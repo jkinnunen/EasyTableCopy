@@ -296,16 +296,36 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self._restore_focus(original_hwnd)
             
             count_info = ""
+            first_cell_empty = False
+
             if obj.role in self.TABLE_ROLES:
                 rows = self.collect_rows_fast(obj)
                 count = len(rows)
-                if count == 1: count_info = _(" (1 row)")
-                elif count > 1: count_info = _(" ({count} rows)").format(count=count)
+                if count == 1: 
+                    count_info = _(" (1 row)")
+                elif count > 1: 
+                    count_info = _(" ({count} rows)").format(count=count)
+
+                if rows:
+                    first_row = rows[0]
+                    first_row_cells = [c for c in first_row.children if c.role in self.CELL_ROLES]
+                    if first_row_cells:
+                        first_cell = first_row_cells[0]
+                        try:
+                            cell_text = first_cell.getText() or ""
+                        except:
+                            cell_text = ""
+                        # Detect empty first cell for background fix logic
+                        if not first_cell.name and not cell_text.strip():
+                            first_cell_empty = True
+
             elif obj.role in self.ROW_ROLES:
                 cells = [c for c in obj.children if c.role in self.CELL_ROLES]
                 count = len(cells)
-                if count == 1: count_info = _(" (1 cell)")
-                elif count > 1: count_info = _(" ({count} cells)").format(count=count)
+                if count == 1: 
+                    count_info = _(" (1 cell)")
+                elif count > 1: 
+                    count_info = _(" ({count} cells)").format(count=count)
 
             info = obj.makeTextInfo(textInfos.POSITION_ALL)
             info.updateSelection()
@@ -313,17 +333,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             winsound.Beep(440, 100) 
             keyboardHandler.KeyboardInputGesture.fromName("control+c").send()
             
-            wx.CallLater(300, self._retry_clipboard_repair, label, count_info, 1)
+            wx.CallLater(300, self._retry_clipboard_repair, label, count_info, 1, first_cell_empty)
         except Exception:
             ui.message(_("Selection failed."))
 
-    def _retry_clipboard_repair(self, label, count_info, attempt):
+
+    def _retry_clipboard_repair(self, label, count_info, attempt, first_cell_empty=False):
         if not wx.TheClipboard.Open():
             if attempt < 15:
-                wx.CallLater(200, self._retry_clipboard_repair, label, count_info, attempt + 1)
+                wx.CallLater(200, self._retry_clipboard_repair, label, count_info, attempt + 1, first_cell_empty)
                 return
             else:
-                ui.message(_("{label} copied{count} (Raw).").format(label=label, count=count_info))
+                ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
                 return
 
         try:
@@ -333,15 +354,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     raw_html = data_obj.GetHTML()
                     modified = False
                     
-                    cell_pattern = re.compile(r'(<td\b[^>]*>)([\s\r\n]*(?:<br\s*/?>)?[\s\r\n]*)(</td>)', re.IGNORECASE)
-                    if cell_pattern.search(raw_html):
-                        raw_html = cell_pattern.sub(r'\1&nbsp;\3', raw_html)
-                        modified = True
-                    
+                    if first_cell_empty:
+                        row_pattern = re.compile(r'(<tr[^>]*>)(.*?)(</tr>)', re.IGNORECASE | re.DOTALL)
+                        row_match = row_pattern.search(raw_html)
+                        
+                        if row_match:
+                            tr_start, row_content, tr_end = row_match.groups()
+                            cell_pattern = re.compile(r'(<(td|th)\b[^>]*>)(.*?)(</\2>)', re.IGNORECASE | re.DOTALL)
+                            cell_match = cell_pattern.search(row_content)
+                            
+                            if cell_match:
+                                c_start, tag, c_content, c_end = cell_match.groups()
+                                repaired_cell = f"{c_start}&nbsp;<p></p>{c_end}"
+                                new_row_content = row_content.replace(cell_match.group(0), repaired_cell, 1)
+                                raw_html = raw_html.replace(row_match.group(0), tr_start + new_row_content + tr_end, 1)
+                                modified = True
+                            else:
+                                repaired_row = f"{tr_start}<td>&nbsp;<p></p></td>{row_content}{tr_end}"
+                                raw_html = raw_html.replace(row_match.group(0), repaired_row, 1)
+                                modified = True
+
                     if "border=" not in raw_html.lower() and "border:" not in raw_html.lower():
-                         table_pattern = re.compile(r'(<table\b[^>]*)(>)', re.IGNORECASE)
-                         raw_html = table_pattern.sub(r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html)
-                         modified = True
+                        raw_html = re.sub(r'(<table\b[^>]*)(>)', r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html, count=1, flags=re.IGNORECASE)
+                        modified = True
 
                     if modified:
                         new_data = wx.DataObjectComposite()
@@ -354,13 +389,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                             new_data.Add(text_obj, False)
                         
                         wx.TheClipboard.SetData(new_data)
-                        winsound.Beep(880, 100)
-                        ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
-                    else:
-                        winsound.Beep(600, 100)
-                        ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
+                    
+                    winsound.Beep(880, 100)
+                    ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
             else:
-                ui.message(_("{label} copied{count} (Text).").format(label=label, count=count_info))
+                ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
         except:
             ui.message(_("Error."))
         finally:
