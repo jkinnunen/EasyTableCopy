@@ -355,19 +355,30 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     modified = False
                     
                     if first_cell_empty:
+                        # Find the first row
                         row_pattern = re.compile(r'(<tr[^>]*>)(.*?)(</tr>)', re.IGNORECASE | re.DOTALL)
                         row_match = row_pattern.search(raw_html)
                         
                         if row_match:
                             tr_start, row_content, tr_end = row_match.groups()
+                            
+                            # SOLUTION: Instead of replacing the first found cell (which is actually the 2nd column),
+                            # we inject a brand new cell at the very beginning of the row content.
+                            # This pushes all existing cells back to their rightful columns.
                             insertion = "<td>&nbsp;<p></p></td>"
+                            
+                            # Combine: Start Tag + New Cell + Existing Content + End Tag
                             repaired_row = f"{tr_start}{insertion}{row_content}{tr_end}"
+                            
+                            # Replace the old row with our newly structured row
                             raw_html = raw_html.replace(row_match.group(0), repaired_row, 1)
                             modified = True
 
+                    # Ensure borders are visible in Word/Excel
                     if "border=" not in raw_html.lower() and "border:" not in raw_html.lower():
-                        raw_html = re.sub(r'(<table\b[^>]*)(>)', r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html, count=1, flags=re.IGNORECASE)
-                        modified = True
+                        if "<table" in raw_html.lower():
+                            raw_html = re.sub(r'(<table\b[^>]*)(>)', r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html, count=1, flags=re.IGNORECASE)
+                            modified = True
 
                     if modified:
                         new_data = wx.DataObjectComposite()
