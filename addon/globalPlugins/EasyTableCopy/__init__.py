@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# EasyTableCopy v2026.4.0
+# EasyTableCopy v2026.5.2
 # Author: Çağrı Doğan
 
 import globalPluginHandler
@@ -362,19 +362,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                         if row_match:
                             tr_start, row_content, tr_end = row_match.groups()
                             
-                            # SOLUTION: Instead of replacing the first found cell (which is actually the 2nd column),
-                            # we inject a brand new cell at the very beginning of the row content.
-                            # This pushes all existing cells back to their rightful columns.
-                            insertion = "<td>&nbsp;<p></p></td>"
+                            # REVISED INJECTION: Removed <p></p> to prevent row doubling in Excel
+                            # Only &nbsp; is used to maintain column structure safely
+                            insertion = "<td>&nbsp;</td>"
                             
-                            # Combine: Start Tag + New Cell + Existing Content + End Tag
                             repaired_row = f"{tr_start}{insertion}{row_content}{tr_end}"
-                            
-                            # Replace the old row with our newly structured row
                             raw_html = raw_html.replace(row_match.group(0), repaired_row, 1)
                             modified = True
 
-                    # Ensure borders are visible in Word/Excel
+                    # Ensure standard table borders
                     if "border=" not in raw_html.lower() and "border:" not in raw_html.lower():
                         if "<table" in raw_html.lower():
                             raw_html = re.sub(r'(<table\b[^>]*)(>)', r'\1 border="1" cellspacing="0" cellpadding="5"\2', raw_html, count=1, flags=re.IGNORECASE)
@@ -394,8 +390,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     
                     winsound.Beep(880, 100)
                     ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
-            else:
-                ui.message(_("{label} copied{count}.").format(label=label, count=count_info))
         except:
             ui.message(_("Error."))
         finally:
