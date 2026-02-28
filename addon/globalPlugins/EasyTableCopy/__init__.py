@@ -677,13 +677,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self._copy_columns_direct([0, 1, 2], _("Columns 1-3"))
 
     def _copy_columns_direct(self, column_indices, label):
-        """Direct column copying for non-web contexts"""
+        """Direct column copying for non-web contexts with proper HTML table structure"""
         table = self._get_current_table()
         if not table:
             ui.message(_("Not on a table."))
             return
         
-        # Special handling for Explorer
+        # --- PART 1: Windows Explorer Handling ---
         if self.is_explorer_context():
             focus = api.getFocusObject()
             try:
@@ -700,43 +700,42 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 if folder_view:
                     items = folder_view.Folder.Items()
                     count = items.Count
-                    
                     if count == 0:
                         ui.message(_("Folder is empty."))
                         return
                     
                     winsound.Beep(440, 100)
                     
-                    # Get headers
+                    # Construct Table Headers
                     headers = []
+                    html_header_parts = []
                     for i in column_indices:
                         header = folder_view.Folder.GetDetailsOf(None, i)
                         if header:
                             headers.append(header)
+                            html_header_parts.append(f"<th>{header}</th>")
                     
-                    # Get data
                     text_rows = ["\t".join(headers)] if headers else []
-                    data_rows = []
+                    html_rows = ["<table border='1' cellpadding='5' cellspacing='0'>"]
+                    if html_header_parts:
+                        html_rows.append("<tr>" + "".join(html_header_parts) + "</tr>")
                     
+                    # Construct Data Rows
                     for i in range(count):
                         item = items.Item(i)
-                        vals = []
+                        row_vals = []
+                        row_html_cells = []
                         for idx in column_indices:
-                            try:
-                                val = str(folder_view.Folder.GetDetailsOf(item, idx)).strip()
-                                vals.append(val if val else " ")
-                            except:
-                                vals.append(" ")
-                        if vals:
-                            data_rows.append("\t".join(vals))
+                            val = str(folder_view.Folder.GetDetailsOf(item, idx)).strip()
+                            row_vals.append(val if val else " ")
+                            row_html_cells.append(f"<td>{val if val else '&nbsp;'}</td>")
+                        
+                        text_rows.append("\t".join(row_vals))
+                        html_rows.append("<tr>" + "".join(row_html_cells) + "</tr>")
                     
-                    if not data_rows:
-                        ui.message(_("No data found."))
-                        return
-                    
-                    text_rows.extend(data_rows)
+                    html_rows.append("</table>")
                     text_out = "\n".join(text_rows)
-                    html_out = "<html><body><pre>" + text_out + "</pre></body></html>"
+                    html_out = "".join(html_rows)
                     
                     if self.copy_manual_safe(html_out, text_out):
                         winsound.Beep(880, 100)
@@ -745,7 +744,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             except:
                 pass
         
-        # Generic table handling for desktop lists
+        # --- PART 2: Generic Desktop List Handling ---
         rows = self.collect_rows_fast(table)
         if not rows:
             ui.message(_("Table is empty."))
@@ -754,28 +753,39 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         winsound.Beep(440, 100)
         
         text_parts = []
+        html_parts = ["<table border='1' cellpadding='5' cellspacing='0'>"]
+        
         for row in rows:
             cells = [c for c in row.children if c.role in self.CELL_ROLES]
             if not cells:
                 cells = list(row.children)
             
-            row_text = []
+            row_text_vals = []
+            row_html_cells = []
+            has_content = False
+            
             for idx in column_indices:
                 if 0 <= idx < len(cells):
                     h, t = self.get_cell_text(cells[idx])
-                    row_text.append(t if t else " ")
+                    row_text_vals.append(t if t else " ")
+                    row_html_cells.append(f"<td>{h if h else '&nbsp;'}</td>")
+                    if t.strip(): has_content = True
                 else:
-                    row_text.append(" ")
+                    row_text_vals.append(" ")
+                    row_html_cells.append("<td>&nbsp;</td>")
             
-            if any(row_text):
-                text_parts.append("\t".join(row_text))
+            if has_content:
+                text_parts.append("\t".join(row_text_vals))
+                html_parts.append("<tr>" + "".join(row_html_cells) + "</tr>")
+        
+        html_parts.append("</table>")
         
         if not text_parts:
             ui.message(_("No data found."))
             return
         
         text_out = "\n".join(text_parts)
-        html_out = "<html><body><pre>" + text_out + "</pre></body></html>"
+        html_out = "".join(html_parts)
         
         if self.copy_manual_safe(html_out, text_out):
             winsound.Beep(880, 100)

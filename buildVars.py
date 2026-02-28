@@ -18,25 +18,12 @@ addon_info = AddonInfo(
 	addon_description=_("""EasyTableCopy is an NVDA add-on designed to solve a common frustration: copying tables from the Web or lists from Windows into documents (like Word, Excel, or Outlook) without losing formatting or layout."""),
 	
 	# version
-	addon_version="2026.5.1",
+	addon_version="2026.5.2",
 	
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
 	addon_changelog=_("""
-* Fixed Excel vertical alignment (a problem occured after fixing ignorance of first empty cell issue) (A1-A2 merge) by removing nested paragraph tags from injected content.
-* Fixed: Resolved an issue where tables copied via "Standard (Native)" mode would shift to the left if the first cell was empty.
-* Added column-specific copying commands for desktop and Explorer (Copy Column 1, Column 2, Column 3, Columns 1-2, Columns 1-3, Columns 1 and 3)
-* Added universal Table Statistics command to announce row and column counts anywhere
-* Added universal Copy Current Cell command for quick cell content extraction
-* Added Copy Marked as Text command for web tables (copies marked rows as plain text)
-* Improved table structure detection for large web tables
-* Optimized performance for large tables with intelligent sampling
-* Enhanced context awareness: commands only work in appropriate contexts (web vs desktop)
-* Updated documentation with all new features (English and Turkish)
-* Fixed: Significantly improved the Reconstructed Copy engine and Column Selection logic to correctly handle complex table layouts.
-* Fixed: Resolved an issue where vertical cell merging (rowspan) caused data from adjacent columns to shift left, leading to misaligned data.
-* Added: Implemented a Virtual Matrix algorithm to track cell occupancy, ensuring that merged cells and spanned columns maintain their correct spatial coordinates during extraction.
-* Improved: Enhanced reliability when copying technical data tables from modern websites using advanced CSS grid and table structures.
+* Fixed column merging in Excel by implementing a structured HTML table engine for custom column selections.
 """),
 	
 	# Author(s)
