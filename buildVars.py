@@ -23,7 +23,7 @@ addon_info = AddonInfo(
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
 	addon_changelog=_("""
-- Ukranian localization.
+- Ukrainian localization.
 """),
 	
 	# Author(s)
