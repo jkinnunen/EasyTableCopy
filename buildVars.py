@@ -18,7 +18,7 @@ addon_info = AddonInfo(
 	addon_description=_("""EasyTableCopy is an NVDA add-on designed to solve a common frustration: copying tables from the Web or lists from Windows into documents (like Word, Excel, or Outlook) without losing formatting or layout."""),
 	
 	# version
-	addon_version="2026.6.5.1",
+	addon_version="2026.6.6",
 	
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
