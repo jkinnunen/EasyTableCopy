@@ -18,12 +18,13 @@ addon_info = AddonInfo(
 	addon_description=_("""EasyTableCopy is an NVDA add-on designed to solve a common frustration: copying tables from the Web or lists from Windows into documents (like Word, Excel, or Outlook) without losing formatting or layout."""),
 	
 	# version
-	addon_version="2026.6.6",
+	addon_version="2026.6.7",
 	
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
 	addon_changelog=_("""
-- Ukrainian localization.
+**Fix: Confirmation message not announced after list copy**
+- After successfully copying a list, NVDA would play the success beep but silently crash before speaking the "List copied" confirmation. The clipboard content was unaffected — only the spoken feedback was lost.
 """),
 	
 	# Author(s)

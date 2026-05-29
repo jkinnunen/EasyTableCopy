@@ -727,7 +727,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 table = focus
             else:
                 temp = focus
-                for _ in range(5):
+                for _loop in range(5):
                     if not temp: break
                     if temp.role in self.TABLE_ROLES:
                         table = temp
@@ -1114,7 +1114,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 if child.role == controlTypes.Role.LISTITEM:
                     t = (child.name or "").strip()
                     if not t:
-                        _, t = self.get_cell_text(child)
+                        _unused, t = self.get_cell_text(child)
                     if t:
                         items.append(t)
         except Exception as e:
@@ -1175,7 +1175,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     # empty for leaf nodes with no sub-children.
                     t = (child.name or "").strip()
                     if not t:
-                        _, t = self.get_cell_text(child)
+                        _unused, t = self.get_cell_text(child)
                     if t:
                         items.append(t)
         except Exception as e:
@@ -1224,7 +1224,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         esc = lambda s: s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
         items = []
         for node in self.marked_rows:
-            _, t = self.get_cell_text(node)
+            _unused, t = self.get_cell_text(node)
             if t:
                 items.append(t)
         if not items:
