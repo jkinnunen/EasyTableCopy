@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# EasyTableCopy v2026.6.5
+# EasyTableCopy v2026.6.8
 # Author: Çağrı Doğan
 
 import globalPluginHandler
@@ -781,6 +781,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         if not table:
             ui.message(_("Not on a table."))
             return
+
+        # --- Intercept SysListView32 here ---
+        is_syslist = False
+        try:
+            if table.windowClassName and table.windowClassName.lower() == "syslistview32":
+                is_syslist = True
+        except Exception:
+            pass
+        
+        if is_syslist and table.windowHandle:
+            # If SysListView32 API extraction succeeds, exit the function.
+            if self.copy_syslistview32(table.windowHandle, column_indices=column_indices, label=label):
+                return
+        # ------------------------------------
         
         # --- PART 1: Windows Explorer Handling ---
         if self.is_explorer_context():
@@ -1244,6 +1258,201 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         else:
             ui.message(_("Copy failed."))
 
+    def copy_syslistview32(self, hwnd, column_indices=None, label=None):
+        """
+        Copy a SysListView32 control completely using Win32 LVM_* messages.
+        Bypasses NVDA's virtualized object tree for complete 64-bit safe extraction.
+        Now supports column filtering.
+        """
+        import ctypes.wintypes as wintypes
+
+        LVM_FIRST           = 0x1000
+        LVM_GETITEMCOUNT    = LVM_FIRST + 4
+        HDM_GETITEMCOUNT    = 0x1200
+        LVM_GETHEADER       = LVM_FIRST + 31
+        LVM_GETCOLUMNW      = LVM_FIRST + 95
+        LVM_GETITEMTEXTW    = LVM_FIRST + 115
+        LVCF_TEXT           = 0x0004
+        LVIF_TEXT           = 0x0001
+
+        PROCESS_VM_OPERATION = 0x0008
+        PROCESS_VM_READ      = 0x0010
+        PROCESS_VM_WRITE     = 0x0020
+        MEM_COMMIT           = 0x1000
+        MEM_RELEASE          = 0x8000
+        PAGE_READWRITE       = 0x04
+
+        class LVCOLUMN(ctypes.Structure):
+            _fields_ = [
+                ("mask",       ctypes.c_uint),
+                ("fmt",        ctypes.c_int),
+                ("cx",         ctypes.c_int),
+                ("pszText",    ctypes.c_void_p),
+                ("cchTextMax", ctypes.c_int),
+                ("iSubItem",   ctypes.c_int),
+                ("iImage",     ctypes.c_int),
+                ("iOrder",     ctypes.c_int),
+            ]
+
+        class LVITEM(ctypes.Structure):
+            _fields_ = [
+                ("mask",       ctypes.c_uint),
+                ("iItem",      ctypes.c_int),
+                ("iSubItem",   ctypes.c_int),
+                ("state",      ctypes.c_uint),
+                ("stateMask",  ctypes.c_uint),
+                ("pszText",    ctypes.c_void_p),
+                ("cchTextMax", ctypes.c_int),
+                ("iImage",     ctypes.c_int),
+                ("lParam",     ctypes.c_void_p),
+            ]
+
+        kernel32 = ctypes.windll.kernel32
+        user32 = ctypes.windll.user32
+
+        # 64-bit safe signatures
+        OpenProcess = ctypes.WINFUNCTYPE(wintypes.HANDLE, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)(("OpenProcess", kernel32))
+        VirtualAllocEx = ctypes.WINFUNCTYPE(ctypes.c_void_p, wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD)(("VirtualAllocEx", kernel32))
+        VirtualFreeEx = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD)(("VirtualFreeEx", kernel32))
+        ReadProcessMemory = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t))(("ReadProcessMemory", kernel32))
+        WriteProcessMemory = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t))(("WriteProcessMemory", kernel32))
+        SendMessageW = ctypes.WINFUNCTYPE(wintypes.LPARAM, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, ctypes.c_void_p)(("SendMessageW", user32))
+
+        TEXT_BUF_SIZE = 512
+
+        # Get total items
+        item_count = SendMessageW(hwnd, LVM_GETITEMCOUNT, 0, None)
+        if item_count <= 0:
+            return False
+
+        # Get total columns
+        header_hwnd = SendMessageW(hwnd, LVM_GETHEADER, 0, None)
+        col_count = 0
+        if header_hwnd:
+            col_count = SendMessageW(header_hwnd, HDM_GETITEMCOUNT, 0, None)
+        if col_count <= 0:
+            col_count = 8 # Fallback
+
+        # Open target process
+        pid = wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        process = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, False, pid.value)
+        
+        if not process:
+            log.debugWarning("EasyTableCopy: OpenProcess failed.")
+            return False
+
+        remote_text = None
+        remote_struct = None
+
+        try:
+            # Allocate memory in target process
+            remote_text = VirtualAllocEx(process, None, TEXT_BUF_SIZE * 2, MEM_COMMIT, PAGE_READWRITE)
+            remote_struct = VirtualAllocEx(process, None, 512, MEM_COMMIT, PAGE_READWRITE)
+            
+            if not remote_text or not remote_struct:
+                log.debugWarning("EasyTableCopy: VirtualAllocEx failed.")
+                return False
+
+            def read_remote_text():
+                local_buf = ctypes.create_unicode_buffer(TEXT_BUF_SIZE)
+                bytes_read = ctypes.c_size_t(0)
+                ReadProcessMemory(process, remote_text, ctypes.byref(local_buf), TEXT_BUF_SIZE * 2, ctypes.byref(bytes_read))
+                return local_buf.value
+
+            def write_lvitem(item_idx, sub_idx):
+                lvi = LVITEM()
+                lvi.mask = LVIF_TEXT
+                lvi.iItem = item_idx
+                lvi.iSubItem = sub_idx
+                lvi.pszText = remote_text
+                lvi.cchTextMax = TEXT_BUF_SIZE
+                written = ctypes.c_size_t(0)
+                WriteProcessMemory(process, remote_struct, ctypes.byref(lvi), ctypes.sizeof(lvi), ctypes.byref(written))
+
+            # Fetch headers
+            headers = []
+            for col_idx in range(col_count):
+                lvc = LVCOLUMN()
+                lvc.mask = LVCF_TEXT
+                lvc.pszText = remote_text
+                lvc.cchTextMax = TEXT_BUF_SIZE
+                written = ctypes.c_size_t(0)
+                
+                zero_buf = (ctypes.c_byte * (TEXT_BUF_SIZE * 2))()
+                WriteProcessMemory(process, remote_text, ctypes.byref(zero_buf), TEXT_BUF_SIZE * 2, ctypes.byref(written))
+                WriteProcessMemory(process, remote_struct, ctypes.byref(lvc), ctypes.sizeof(lvc), ctypes.byref(written))
+                
+                SendMessageW(hwnd, LVM_GETCOLUMNW, col_idx, remote_struct)
+                h = read_remote_text()
+                headers.append(h if h else f"Col{col_idx+1}")
+
+            # Trim empty headers at the end
+            while headers and not headers[-1].strip():
+                headers.pop()
+            if not headers:
+                headers = [f"Col{i+1}" for i in range(col_count)]
+            col_count = len(headers)
+
+            # Filter indices based on user request
+            if column_indices is not None:
+                valid_indices = [i for i in column_indices if i < col_count]
+                if not valid_indices:
+                    ui.message(_("Selected columns do not exist."))
+                    return True # Handled, don't fall back to standard NVDA objects
+                target_cols = valid_indices
+            else:
+                target_cols = list(range(col_count))
+
+            filtered_headers = [headers[i] for i in target_cols]
+
+            # Fetch rows and cells for target columns
+            winsound.Beep(440, 100)
+            text_rows = ["\t".join(filtered_headers)]
+            esc = lambda s: s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            html_rows = ["<table border='1' cellpadding='2' cellspacing='0'><tr>" + "".join(f"<th>{esc(h)}</th>" for h in filtered_headers) + "</tr>"]
+
+            for item_idx in range(item_count):
+                row_vals = []
+                for sub_idx in target_cols:
+                    zero_buf = (ctypes.c_byte * (TEXT_BUF_SIZE * 2))()
+                    written = ctypes.c_size_t(0)
+                    WriteProcessMemory(process, remote_text, ctypes.byref(zero_buf), TEXT_BUF_SIZE * 2, ctypes.byref(written))
+                    
+                    write_lvitem(item_idx, sub_idx)
+                    SendMessageW(hwnd, LVM_GETITEMTEXTW, item_idx, remote_struct)
+                    row_vals.append(read_remote_text())
+
+                text_rows.append("\t".join(row_vals))
+                html_rows.append("<tr>" + "".join(f"<td>{esc(v) if v else '&nbsp;'}</td>" for v in row_vals) + "</tr>")
+
+            html_rows.append("</table>")
+
+        finally:
+            if remote_text:
+                VirtualFreeEx(process, remote_text, 0, MEM_RELEASE)
+            if remote_struct:
+                VirtualFreeEx(process, remote_struct, 0, MEM_RELEASE)
+            if process:
+                kernel32.CloseHandle(process)
+
+        # Send to clipboard
+        html_out = "".join(html_rows)
+        text_out = "\n".join(text_rows)
+        if self.copy_manual_safe(html_out, text_out):
+            winsound.Beep(880, 100)
+            
+            # Use label if provided (for column specific copying)
+            if label:
+                ui.message(_("{label} ({count} items) copied.").format(label=label, count=item_count))
+            else:
+                if item_count == 1:
+                    ui.message(_("List copied (1 item)."))
+                else:
+                    ui.message(_("List copied ({count} items).").format(count=item_count))
+            return True
+        return False
+
     def show_phantom_menu(self, current_obj, original_hwnd, is_list=False):
         dummy_frame = wx.Frame(None, -1, "Helper", pos=(0,0), size=(1,1))
         dummy_frame.Show()
@@ -1344,10 +1553,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                         break
                     temp = temp.parent
             if target_list:
-                # Use copy_web_list_plain for LIST role: these are typically <select>
-                # dropdowns (display:none, IA2_STATE_OPAQUE) whose children are not
-                # reachable via NVDA normal child iteration. The IAccessible accChild
-                # fallback inside copy_web_list_plain handles them correctly.
+                # --- Interrupting: If the list is a SysListView32, run the Win32 memory read method ---
+                is_syslist = False
+                try:
+                    if target_list.windowClassName and target_list.windowClassName.lower() == "syslistview32":
+                        is_syslist = True
+                except Exception:
+                    pass
+                
+                if is_syslist and target_list.windowHandle:
+                    # Exit the function if successful
+                    if self.copy_syslistview32(target_list.windowHandle):
+                        return
+
+                # --- If not SysListView32 or fails, continue normal process ---
                 if target_list.role == controlTypes.Role.LIST:
                     self.copy_web_list_plain(target_list)
                 else:
