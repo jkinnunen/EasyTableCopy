@@ -18,14 +18,19 @@ addon_info = AddonInfo(
 	addon_description=_("""EasyTableCopy is an NVDA add-on designed to solve a common frustration: copying tables from the Web or lists from Windows into documents (like Word, Excel, or Outlook) without losing formatting or layout."""),
 	
 	# version
-	addon_version="2026.6.8",
+	addon_version="2026.7.0",
 	
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
 	addon_changelog=_("""
-* **Improved Large List Handling:** Copying large list controls (specifically `SysListView32`) now reliably extracts all items while preserving table formatting. This update bypasses previous limitations caused by object virtualization, ensuring items outside the visible screen are no longer skipped.
-* **Reliable Column Selection:** Column-specific copying commands have been updated to work consistently within extensive lists. You can now copy specific columns from large lists without experiencing silent failures or missing data.
-* **64-bit Architecture Stability:** Resolved a memory pointer truncation issue during Win32 API operations. Background data extraction is now fully stable and compatible with modern 64-bit NVDA architectures.
+### Added
+- Row/item marking and copying of marked items now also works in list types beyond web lists and web tables.
+- When navigating to a marked item, EasyTableCopy now announces "marked":
+  - In web lists, via `I` / `Shift+I` (next/previous list item).
+  - In web tables, via `Ctrl+Alt+Down` / `Ctrl+Alt+Up` (next/previous row).
+  - In other (non-web) lists, via the Up/Down arrow keys.
+- The "marked" announcement is now spoken before the item's name, instead of after it.
+- Marks from a previously visited list/table are now cleared automatically when you start marking in a different list/table, so stale selections from an earlier list no longer linger.
 """),
 	
 	# Author(s)

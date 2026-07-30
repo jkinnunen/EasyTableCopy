@@ -16,6 +16,7 @@ import keyboardHandler
 import re
 import time
 import winsound
+import speech
 from typing import List, Tuple, Optional, Set
 import gc
 from logHandler import log
@@ -63,16 +64,127 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             if hasattr(r, name): s.add(getattr(r, name))
 
 
+    #: Marker attribute name used to detect/restore our wrapped browse mode
+    #: navigation scripts (list item & table row quick nav).
+    _NAV_PATCH_MARKER = "_easyTableCopy_origFunc"
+
     def __init__(self):
         super().__init__()
         self.marked_rows = []
         self.marked_col_indices = set()
+        #: Container (list/table/tree) that the current row marks belong to.
+        #: Used to detect when the user has moved to a different list, so
+        #: stale marks from the previous list can be cleared automatically.
+        self.marked_container = None
+        #: Same idea, but for column marks.
+        self.marked_col_container = None
+        self._patch_navigation_announcements()
 
     def get_context_tree_interceptor(self):
         obj = api.getFocusObject()
         if hasattr(obj, "treeInterceptor") and obj.treeInterceptor:
             return obj.treeInterceptor
         return None
+
+    # =========================================================================
+    # FEATURE: ANNOUNCE "MARKED" WHEN LANDING ON A MARKED ROW/ITEM WHILE
+    # NAVIGATING WITH WEB LIST ITEM (I / SHIFT+I) OR TABLE ROW
+    # (CONTROL+ALT+DOWNARROW / UPARROW) QUICK NAV COMMANDS.
+    #
+    # These commands move NVDA's virtual caret without generating a real OS
+    # focus event, so event_gainFocus can't be used to detect them. Instead
+    # we wrap the actual NVDA core script methods that implement these
+    # commands (real, stably-named Python methods on shared base classes),
+    # run the original behaviour first, then check whether the caret landed
+    # on a marked row/item and announce it if so.
+    # =========================================================================
+    def _wrap_nav_script(self, cls, method_name):
+        """Wrap cls.method_name so our mark-announcement runs after NVDA's
+        own behaviour. Safe to call multiple times (idempotent) and safe if
+        the method doesn't exist (future NVDA versions may rename things)."""
+        orig = getattr(cls, method_name, None)
+        if orig is None or hasattr(orig, self._NAV_PATCH_MARKER):
+            return
+        plugin = self
+
+        def wrapped(ti_self, gesture, _orig=orig):
+            _orig(ti_self, gesture)
+            try:
+                plugin._announce_if_marked(ti_self)
+            except Exception as e:
+                log.debugWarning(f"EasyTableCopy._wrap_nav_script (announce): {e}")
+
+        wrapped.__name__ = getattr(orig, "__name__", method_name)
+        wrapped.__doc__ = getattr(orig, "__doc__", None)
+        if hasattr(orig, "resumeSayAllMode"):
+            wrapped.resumeSayAllMode = orig.resumeSayAllMode
+        if hasattr(orig, "ignoreTreeInterceptorPassThrough"):
+            wrapped.ignoreTreeInterceptorPassThrough = orig.ignoreTreeInterceptorPassThrough
+        setattr(wrapped, self._NAV_PATCH_MARKER, orig)
+        setattr(cls, method_name, wrapped)
+
+    def _unwrap_nav_script(self, cls, method_name):
+        current = getattr(cls, method_name, None)
+        orig = getattr(current, self._NAV_PATCH_MARKER, None) if current is not None else None
+        if orig is not None:
+            setattr(cls, method_name, orig)
+
+    def _patch_navigation_announcements(self):
+        try:
+            import browseMode
+            self._wrap_nav_script(browseMode.BrowseModeTreeInterceptor, "script_nextListItem")
+            self._wrap_nav_script(browseMode.BrowseModeTreeInterceptor, "script_previousListItem")
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._patch_navigation_announcements (listItem): {e}")
+        try:
+            import documentBase
+            self._wrap_nav_script(documentBase.DocumentWithTableNavigation, "script_nextRow")
+            self._wrap_nav_script(documentBase.DocumentWithTableNavigation, "script_previousRow")
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._patch_navigation_announcements (row): {e}")
+
+    def _unpatch_navigation_announcements(self):
+        try:
+            import browseMode
+            self._unwrap_nav_script(browseMode.BrowseModeTreeInterceptor, "script_nextListItem")
+            self._unwrap_nav_script(browseMode.BrowseModeTreeInterceptor, "script_previousListItem")
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._unpatch_navigation_announcements (listItem): {e}")
+        try:
+            import documentBase
+            self._unwrap_nav_script(documentBase.DocumentWithTableNavigation, "script_nextRow")
+            self._unwrap_nav_script(documentBase.DocumentWithTableNavigation, "script_previousRow")
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._unpatch_navigation_announcements (row): {e}")
+
+    def _speak_marked(self):
+        """Announce "marked" ahead of whatever NVDA has just queued (the
+        item/row name), rather than after it, by using NOW priority: this
+        interrupts the in-progress utterance, speaks immediately, then lets
+        the interrupted utterance continue."""
+        try:
+            from speech.priorities import Spri
+            speech.speakMessage(_("marked"), priority=Spri.NOW)
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._speak_marked (priority): {e}")
+            ui.message(_("marked"))
+
+    def _announce_if_marked(self, ti):
+        """After a list-item or table-row quick nav command has run, check
+        whether the browse mode caret landed on a marked row/item and, if
+        so, announce it."""
+        if not self.marked_rows:
+            return
+        try:
+            obj = ti.makeTextInfo(textInfos.POSITION_CARET).NVDAObjectAtStart
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy._announce_if_marked: {e}")
+            return
+        row = self.find_object_by_role(obj, self.ROW_ROLES)
+        if row and row in self.marked_rows:
+            # Translators: reported after moving to a row/item that was
+            # previously marked with the mark-row command.
+            self._speak_marked()
 
     def is_web_context(self):
         """Check if current context is web (has tree interceptor)"""
@@ -82,6 +194,35 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         """Check if current context is Windows Explorer"""
         focus = api.getFocusObject()
         return (focus.appModule and focus.appModule.appName.lower() == "explorer")
+
+    def is_syslistview32_obj(self, obj):
+        """Check whether the given NVDA object lives inside a SysListView32 window.
+        These lists are copied via direct Win32 memory reads (copy_syslistview32),
+        which bypasses the object-tree mark system entirely, so marking here would
+        silently do nothing useful yet."""
+        try:
+            return bool(obj and obj.windowClassName and obj.windowClassName.lower() == "syslistview32")
+        except Exception:
+            return False
+
+    def event_gainFocus(self, obj, nextHandler):
+        """Desktop lists (generic UIA/MSAA lists, not web/Explorer/SysListView32)
+        move focus with a real OS focus event on every up/down arrow press, so
+        unlike the web/table quick-nav commands, this can be detected here
+        directly instead of via wrapped scripts."""
+        nextHandler()
+        if not self.marked_rows:
+            return
+        try:
+            if self.is_web_context() or self.is_explorer_context():
+                return
+            if self.is_syslistview32_obj(obj):
+                return
+            row = self.find_object_by_role(obj, self.ROW_ROLES)
+            if row and row in self.marked_rows:
+                self._speak_marked()
+        except Exception as e:
+            log.debugWarning(f"EasyTableCopy.event_gainFocus: {e}")
 
     def is_desktop_list_context(self):
         """Check if current context is a desktop list (not web, not explorer)"""
@@ -1104,7 +1245,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         elif item_id == 7:
             self.copy_web_list_plain(current_obj)
         elif item_id == 8:
-            self.copy_web_list_marked()
+            self.copy_marked_list_items()
         elif item_id == 9:
             if not self.marked_rows:
                 ui.message(_("No selection to clear."))
@@ -1230,8 +1371,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         else:
             ui.message(_("Copy failed."))
 
-    def copy_web_list_marked(self):
-        """Copy only the marked list items as plain text + HTML list."""
+    def copy_marked_list_items(self):
+        """Copy only the marked list items as plain text + HTML list.
+        Context-agnostic: works for both web lists and generic desktop UIA lists,
+        since it only ever reads from self.marked_rows."""
         if not self.marked_rows:
             ui.message(_("No items marked."))
             return
@@ -1568,7 +1711,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
                 # --- If not SysListView32 or fails, continue normal process ---
                 if target_list.role == controlTypes.Role.LIST:
-                    self.copy_web_list_plain(target_list)
+                    if self.marked_rows:
+                        self.copy_marked_list_items()
+                    else:
+                        self.copy_web_list_plain(target_list)
                 else:
                     self.perform_list_view_copy_fallback(target_list)
             else:
@@ -1576,18 +1722,38 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script_description(_("Marks/Unmarks current row or list item."))
     def script_markRow(self, gesture):
-        if not self.get_context_tree_interceptor(): 
-            return
         if self.marked_col_indices:
             ui.message(_("Cannot mark rows while columns are selected."))
             return
+        ti = self.get_context_tree_interceptor()
         obj = None
-        try: 
-            obj = self.get_context_tree_interceptor().makeTextInfo(textInfos.POSITION_CARET).NVDAObjectAtStart
-        except Exception as e:
-            log.debugWarning(f"EasyTableCopy.script_markRow: {e}")
+        if ti:
+            try:
+                obj = ti.makeTextInfo(textInfos.POSITION_CARET).NVDAObjectAtStart
+            except Exception as e:
+                log.debugWarning(f"EasyTableCopy.script_markRow: {e}")
+        else:
+            # Desktop: generic UIA/MSAA lists only. Explorer has its own native
+            # selection concept, and SysListView32 lists are copied via a
+            # separate Win32 memory-read path that never consults marked_rows.
+            if self.is_explorer_context():
+                ui.message(_("Use native selection (Ctrl+Click / Shift+Arrow) in Explorer."))
+                return
+            obj = api.getFocusObject()
+            if self.is_syslistview32_obj(obj):
+                ui.message(_("Marking is not supported in this list yet."))
+                return
         row = self.find_object_by_role(obj, self.ROW_ROLES)
         if row:
+            if row.role == controlTypes.Role.TREEVIEWITEM:
+                ui.message(_("Marking is not supported in tree views."))
+                return
+            # If marks exist from a different list/table, they no longer
+            # apply here - drop them before marking in the current one.
+            container = self.find_object_by_role(row.parent, self.TABLE_ROLES) if row.parent else None
+            if self.marked_rows and container is not None and container != self.marked_container:
+                self.marked_rows = []
+            self.marked_container = container
             # Use "item" label for list items, "row" for table rows
             is_list_item = (row.role == controlTypes.Role.LISTITEM)
             lbl_single = _("item") if is_list_item else _("row")
@@ -1625,6 +1791,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             log.debugWarning(f"EasyTableCopy.script_markColumn: {e}")
         cell = self.find_object_by_role(obj, self.CELL_ROLES)
         if cell:
+            # If marks exist from a different table, they no longer apply
+            # here - drop them before marking a column in the current one.
+            table = self.find_object_by_role(cell.parent, self.TABLE_ROLES) if cell.parent else None
+            if self.marked_col_indices and table is not None and table != self.marked_col_container:
+                self.marked_col_indices.clear()
+            self.marked_col_container = table
             idx = self.get_column_index(cell)
             if idx != -1:
                 if idx in self.marked_col_indices:
@@ -1650,8 +1822,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script_description(_("Clears selections."))
     def script_clearAll(self, gesture):
-        if not self.get_context_tree_interceptor(): 
-            return
         if not self.marked_rows and not self.marked_col_indices:
             ui.message(_("No selection to clear."))
             return
@@ -1663,6 +1833,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         """Clean up on addon unload"""
         self.marked_rows = []
         self.marked_col_indices.clear()
+        self._unpatch_navigation_announcements()
 
     __gestures = {
         "kb:alt+nvda+t": "tableMenu",
