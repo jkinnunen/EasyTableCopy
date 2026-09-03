@@ -176,6 +176,12 @@ Eklenti, büyük tablolarda performans sorunu yaşamamak için akıllı örnekle
 
 ---
 
-## 7. Geri Bildirim ve Katkı
+## 7. Teşekkürler
+
+Hızlı bir “tablo kopyalama” açılır menüsü fikri (NVDA+Alt+T tuş kombinasyonuna bağlı olarak), mltony’nin harika [Tony’s Enhancements](https://github.com/mltony/nvda-tonys-enhancements) eklentisindeki tablo kopyalama özelliğinden esinlenmiştir. Herhangi bir kod yeniden kullanılmamıştır; EasyTableCopy, tablo/satır/sütun çıkarma işlemlerini bağımsız olarak gerçekleştirir – ancak fikrin kaynağına teşekkür borçluyuz.
+
+Ayrıca, NVDA eklentilerinde yerel Windows liste kontrollerine (SysListView32 vb.) verilen birinci sınıf desteğin değerini gösteren ABuffEr’ın [Columns Review](https://github.com/ABuffEr/columnsReview) eklentisine de teşekkür ederiz; bu durum, EasyTableCopy’nin bu kontrollere doğrudan destek verme kararını etkilemiştir.
+
+## 8. Geri Bildirim ve Katkı
 
 Herhangi bir sorunla karşılaşırsanız veya iyileştirme önerileriniz varsa, lütfen eklentinin deposunu ziyaret edin veya yazarla iletişime geçin.

@@ -167,6 +167,19 @@ Use the `Copy Current Cell` command anywhere to quickly copy just the content of
 * **Web vs Desktop:** Some commands are context-specific (web-only or desktop-only) to ensure reliable operation. Commands that don't apply in the current context are simply ignored.
 * **Tree Loading:** In some TreeViews, items that have never been expanded might not be available to NVDA until they are accessed.
 
-## 7. Feedback and Contributions
+## 7. Acknowledgments
+
+The idea of a quick "copy table" popup menu (bound to NVDA+Alt+T) was
+inspired by the table-copying feature in mltony's excellent
+[Tony's Enhancements](https://github.com/mltony/nvda-tonys-enhancements)
+add-on. No code was reused — EasyTableCopy implements table/row/column
+extraction independently — but credit belongs where the idea originated.
+
+Thanks are also due to ABuffEr's [Columns Review](https://github.com/ABuffEr/columnsReview)
+add-on for demonstrating the value of first-class support for native
+Windows list controls (SysListView32 etc.) in NVDA add-ons, which
+influenced EasyTableCopy's decision to support these controls directly.
+
+## 8. Feedback and Contributions
 
 If you encounter any issues or have suggestions for improvement, please visit the add-on's repository or contact the author.
