@@ -18,7 +18,6 @@ import time
 import winsound
 import speech
 from typing import List, Tuple, Optional, Set
-import gc
 from logHandler import log
 
 # Start translation system
@@ -31,6 +30,14 @@ CLIPBOARD_INITIAL_WAIT_MS = 300
 CLIPBOARD_RETRY_WAIT_MS = 200
 CLIPBOARD_MAX_RETRIES = 15
 MAX_PARENT_SEARCH_DEPTH = 10
+
+# copy_manual_safe() writes to the clipboard synchronously (we own the data,
+# there's no need to wait for another app to finish writing first, as with
+# the native Ctrl+C path above). Contention here is only ever a brief lock
+# held by another process, so a handful of short, blocking retries is enough
+# and avoids a noticeable freeze in speech.
+CLIPBOARD_MANUAL_MAX_RETRIES = 5
+CLIPBOARD_MANUAL_RETRY_WAIT_S = 0.03
 
 def script_description(desc):
     def wrapper(func):
@@ -308,9 +315,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         return "", ""
 
     def copy_manual_safe(self, html, text):
-        """Fast clipboard handling"""
-        if not wx.TheClipboard.Open():
-            log.debugWarning("EasyTableCopy.copy_manual_safe: Clipboard could not be opened.")
+        """Fast clipboard handling, with a few short retries if another
+        process is briefly holding the clipboard lock (same reasoning as
+        _retry_clipboard_repair, but blocking since we write the data
+        ourselves rather than waiting on an external app)."""
+        opened = False
+        for attempt in range(CLIPBOARD_MANUAL_MAX_RETRIES):
+            if wx.TheClipboard.Open():
+                opened = True
+                break
+            if attempt < CLIPBOARD_MANUAL_MAX_RETRIES - 1:
+                time.sleep(CLIPBOARD_MANUAL_RETRY_WAIT_S)
+        if not opened:
+            log.debugWarning(f"EasyTableCopy.copy_manual_safe: Clipboard could not be opened after {CLIPBOARD_MANUAL_MAX_RETRIES} attempts.")
             return False
         try:
             d = wx.DataObjectComposite()
@@ -648,6 +665,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     # ENGINE C: DESKTOP LISTS
     # =========================================================================
     def copy_explorer_content(self, hwnd):
+        shell = None
         try:
             shell = CreateObject("shell.application")
             folder_view = None
@@ -697,10 +715,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             log.debugWarning(f"EasyTableCopy.copy_explorer_content: {e}")
             return False
         finally:
-            try:
-                del shell
-            except Exception:
-                pass
+            if shell is not None:
+                try:
+                    del shell
+                except Exception:
+                    pass
 
     # =========================================================================
     # FEATURE: HIERARCHICAL TREE COPY (FULL STRUCTURE)
@@ -1482,7 +1501,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         process = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, False, pid.value)
         
         if not process:
-            log.debugWarning("EasyTableCopy: OpenProcess failed.")
+            # ERROR_ACCESS_DENIED (5) here almost always means the target window
+            # belongs to a process running at a higher integrity level than NVDA
+            # (e.g. an elevated/admin app), which the OS will never let us open
+            # a handle to. This is expected and not fixable from here; we still
+            # return False so the caller falls back to the normal NVDA-object
+            # based copy path, but log distinctly to make this diagnosable.
+            err = ctypes.windll.kernel32.GetLastError()
+            if err == 5:
+                log.debugWarning("EasyTableCopy: OpenProcess failed (Access Denied - target process is likely running elevated/as administrator).")
+            else:
+                log.debugWarning(f"EasyTableCopy: OpenProcess failed (error code {err}).")
             return False
 
         remote_text = None

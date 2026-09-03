@@ -15,22 +15,23 @@ addon_info = AddonInfo(
 	
 	# Add-on description
 	# Translators: Long description to be shown for this add-on
-	addon_description=_("""EasyTableCopy is an NVDA add-on designed to solve a common frustration: copying tables from the Web or lists from Windows into documents (like Word, Excel, or Outlook) without losing formatting or layout."""),
+	addon_description=_("""EasyTableCopy lets you copy tables, lists, and grids from the Web, desktop apps, and Windows Explorer into Word, Excel, or Outlook — with formatting intact. Mark specific rows or columns to copy, grab a single cell, flatten a tree view, or copy an entire folder listing, all with a keystroke."""),
 	
 	# version
-	addon_version="2026.7.0",
+	addon_version="2026.7.1",
 	
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version
 	addon_changelog=_("""
-### Added
-- Row/item marking and copying of marked items now also works in list types beyond web lists and web tables.
-- When navigating to a marked item, EasyTableCopy now announces "marked":
-  - In web lists, via `I` / `Shift+I` (next/previous list item).
-  - In web tables, via `Ctrl+Alt+Down` / `Ctrl+Alt+Up` (next/previous row).
-  - In other (non-web) lists, via the Up/Down arrow keys.
-- The "marked" announcement is now spoken before the item's name, instead of after it.
-- Marks from a previously visited list/table are now cleared automatically when you start marking in a different list/table, so stale selections from an earlier list no longer linger.
+## Changed
+- Improved reliability of quick/manual copy operations (marked rows/columns,
+  cell copy, tree copy, list copy, SysListView32 lists) when the system
+  clipboard is briefly held by another process. EasyTableCopy now retries a
+  few times before giving up, instead of immediately reporting
+  "Copy failed." This should eliminate occasional spurious copy failures
+  caused by transient clipboard contention.
+
+- Ensure 2026.2 compatibility.
 """),
 	
 	# Author(s)
@@ -49,7 +50,7 @@ addon_info = AddonInfo(
 	addon_minimumNVDAVersion="2022.1.0",
 	
 	# Last NVDA version supported/tested
-	addon_lastTestedNVDAVersion="2026.1.0",
+	addon_lastTestedNVDAVersion="2026.2.0",
 	
 	# Add-on update channel (None denotes stable releases)
 	addon_updateChannel=None,
